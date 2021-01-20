@@ -1,0 +1,128 @@
+
+/* ANALYZING THE DATA*/
+/*Which tracks appeared in the most playlists? how many playlist did they appear in? */
+
+select tracks.name, count(playlists.PlaylistId)
+from tracks
+left JOIN playlist_track
+	on tracks.TrackId = playlist_track.TrackId
+left JOIN playlists
+	on playlist_track.PlaylistId = playlists.PlaylistId
+group by 1
+order by 2 DESC
+limit 5;
+
+/*Which track generated the most revenue? which album? which genre? */
+WITH name_invoice as (
+select tracks.Name, invoice_items.UnitPrice, invoice_items.Quantity
+from tracks
+left join invoice_items
+on tracks.TrackId = invoice_items.TrackId
+)
+select Name, sum(UnitPrice) as total_price from name_invoice
+group by 1
+order by 2 DESC
+limit 5;
+
+select genres.Name, round(sum(invoice_items.UnitPrice),1) as Revenue
+from genres left join tracks
+	on genres.GenreId = tracks.GenreId
+left join invoice_items
+	on tracks.TrackId = invoice_items.TrackId
+group by 1
+order by 2 DESC
+limit 5;
+
+/*Which countries have the highest sales revenue? What percent of total revenue does each country make up?*/
+WITH revenue_country AS (
+select BillingCountry, sum(Total) as total_revenue from invoices
+group by 1
+order by 2 DESC
+)
+SELECT BillingCountry, (total_revenue/(select sum(total_revenue) from revenue_country) *100) as percent from revenue_country
+group by 1
+order by 2 DESC
+limit 5;
+
+
+/* How many customers did each employee support, what is the average revenue for each sale, and what is their total sale? */
+WITH employees_revenus AS (
+select employees.FirstName, employees.LastName, customers.CustomerId, invoices.Total
+from employees 
+left join customers
+	on employees.EmployeeId = customers.SupportRepId
+left join invoices
+	on customers.CustomerId = invoices.InvoiceId
+)
+
+select FirstName, LastName, count(customerId) as number_customers, round(AVG(Total),1) as average_sale, round(SUM(Total),1) as total_sale from employees_revenus
+group by 2
+order by 5 desc;
+
+
+/* ADDITIONAL CHALLENGE */ 
+/*Do longer or shorter length albums tend to generate more revenue? */
+
+select 
+CASE
+	when length(albums.Title) < 12 then 'Short title'
+	when length(albums.Title) >= 12 then 'Long title'
+END as length_title,
+round(sum(invoices.Total),1) as total_revenue
+from albums 
+left join tracks
+	on albums.AlbumId = tracks.AlbumId
+left join invoice_items
+	on tracks.TrackId = invoice_items.TrackId
+left join invoices
+	on invoice_items.InvoiceId = invoices.InvoiceId
+group by 1
+order by 2 DESC;
+
+
+/*Is the number of times a track appear in any playlist a good indicator of sales? */
+/*with track_playlist_revenue AS (
+select tracks.Name, playlist_track.PlaylistId, invoices.Total 
+from playlist_track
+left join tracks
+	on tracks.TrackId = playlist_track.TrackId
+left join invoice_items
+	on tracks.TrackId = invoice_items.TrackId
+left join invoices
+	on invoice_items.InvoiceId = invoices.InvoiceId
+)
+
+select Name, count(PlaylistId) as number_playlist, sum(Total) as total_revenue from track_playlist_revenue
+group by 1
+order by 3 desc;*/
+
+select tracks.Name, count(playlist_track.PlaylistId), sum(invoices.Total)
+from playlist_track
+left join tracks
+	on tracks.TrackId = playlist_track.TrackId
+left join invoice_items
+	on tracks.TrackId = invoice_items.TrackId
+left join invoices
+	on invoice_items.InvoiceId = invoices.InvoiceId
+group by 1
+order by 3 desc;
+
+/* ADVANCED CHALLENGE */
+/*How much revenue is generated each year, and what is its percent change 50 from the previous year?*/
+
+WITH 
+annee AS (
+select cast(strftime('%Y', InvoiceDate) as int) as 'this_year', sum(Total) as 'total_revenue' from invoices
+group by 1
+),
+
+prec AS (
+select cast(strftime('%Y', InvoiceDate) as int) as 'last_year', sum(Total) as 'total_revenue_prec' from invoices
+group by 1
+)
+
+select annee.this_year, annee.total_revenue, ifnull(round((annee.total_revenue - prec.total_revenue_prec) / prec.total_revenue_prec * 100, 2), 'N/A')  as 'progression'
+from annee 
+left join prec
+on annee.this_year = prec.last_year + 1
+group by annee.this_year;
